@@ -45,11 +45,11 @@ static int nvme_wait_csts(struct nvme_dev *dev, u32 mask, u32 val)
 }
 
 static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
-			   int total_len, u64 dma_addr)
+			   int total_len, void *buffer)
 {
 	const u32 page_size = dev->page_size;
 	const u32 prps_per_page = (page_size >> 3) - 1;
-	int offset = dma_addr & (page_size - 1);
+	int offset = (uintptr_t)buffer & (page_size - 1);
 	u64 *prp_pool;
 	int length = total_len;
 	int i, nprps;
@@ -63,10 +63,10 @@ static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
 	}
 
 	if (length)
-		dma_addr += (page_size - offset);
+		buffer += (page_size - offset);
 
 	if (length <= page_size) {
-		*prp2 = dma_addr;
+		*prp2 = (u64)buffer;
 		return 0;
 	}
 
@@ -96,11 +96,11 @@ static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
 			i = 0;
 			prp_pool += page_size;
 		}
-		*(prp_pool + i++) = cpu_to_le64(dma_addr);
-		dma_addr += page_size;
+		*(prp_pool + i++) = cpu_to_le64((u64)buffer);
+		buffer += page_size;
 		nprps--;
 	}
-	*prp2 = (ulong)dev->prp_pool;
+	*prp2 = (u64)dev->prp_pool;
 
 	flush_dcache_range((ulong)dev->prp_pool, (ulong)dev->prp_pool +
 			   num_pages * page_size);
@@ -447,42 +447,42 @@ static int nvme_alloc_sq(struct nvme_dev *dev, u16 qid,
 }
 
 int nvme_identify(struct nvme_dev *dev, unsigned nsid,
-		  unsigned cns, dma_addr_t dma_addr)
+		  unsigned int cns, void *buffer)
 {
 	struct nvme_command c;
 	u32 page_size = dev->page_size;
-	int offset = dma_addr & (page_size - 1);
+	int offset = (uintptr_t)buffer & (page_size - 1);
 	int length = sizeof(struct nvme_id_ctrl);
 	int ret;
 
 	memset(&c, 0, sizeof(c));
 	c.identify.opcode = nvme_admin_identify;
 	c.identify.nsid = cpu_to_le32(nsid);
-	c.identify.prp1 = cpu_to_le64(dma_addr);
+	c.identify.prp1 = cpu_to_le64((u64)buffer);
 
 	length -= (page_size - offset);
 	if (length <= 0) {
 		c.identify.prp2 = 0;
 	} else {
-		dma_addr += (page_size - offset);
-		c.identify.prp2 = cpu_to_le64(dma_addr);
+		buffer += (page_size - offset);
+		c.identify.prp2 = cpu_to_le64((u64)buffer);
 	}
 
 	c.identify.cns = cpu_to_le32(cns);
 
-	invalidate_dcache_range(dma_addr,
-				dma_addr + sizeof(struct nvme_id_ctrl));
+	invalidate_dcache_range((uintptr_t)buffer,
+				(uintptr_t)buffer + sizeof(struct nvme_id_ctrl));
 
 	ret = nvme_submit_admin_cmd(dev, &c, NULL);
 	if (!ret)
-		invalidate_dcache_range(dma_addr,
-					dma_addr + sizeof(struct nvme_id_ctrl));
+		invalidate_dcache_range((uintptr_t)buffer,
+					(uintptr_t)buffer + sizeof(struct nvme_id_ctrl));
 
 	return ret;
 }
 
 int nvme_get_features(struct nvme_dev *dev, unsigned fid, unsigned nsid,
-		      dma_addr_t dma_addr, u32 *result)
+		      void *buffer, u32 *result)
 {
 	struct nvme_command c;
 	int ret;
@@ -490,7 +490,7 @@ int nvme_get_features(struct nvme_dev *dev, unsigned fid, unsigned nsid,
 	memset(&c, 0, sizeof(c));
 	c.features.opcode = nvme_admin_get_features;
 	c.features.nsid = cpu_to_le32(nsid);
-	c.features.prp1 = cpu_to_le64(dma_addr);
+	c.features.prp1 = cpu_to_le64((u64)buffer);
 	c.features.fid = cpu_to_le32(fid);
 
 	ret = nvme_submit_admin_cmd(dev, &c, result);
@@ -510,13 +510,13 @@ int nvme_get_features(struct nvme_dev *dev, unsigned fid, unsigned nsid,
 }
 
 int nvme_set_features(struct nvme_dev *dev, unsigned fid, unsigned dword11,
-		      dma_addr_t dma_addr, u32 *result)
+		      void *buffer, u32 *result)
 {
 	struct nvme_command c;
 
 	memset(&c, 0, sizeof(c));
 	c.features.opcode = nvme_admin_set_features;
-	c.features.prp1 = cpu_to_le64(dma_addr);
+	c.features.prp1 = cpu_to_le64((u64)buffer);
 	c.features.fid = cpu_to_le32(fid);
 	c.features.dword11 = cpu_to_le32(dword11);
 
@@ -567,7 +567,7 @@ static int nvme_set_queue_count(struct nvme_dev *dev, int count)
 	u32 q_count = (count - 1) | ((count - 1) << 16);
 
 	status = nvme_set_features(dev, NVME_FEAT_NUM_QUEUES,
-			q_count, 0, &result);
+			q_count, NULL, &result);
 
 	if (status < 0)
 		return status;
@@ -628,7 +628,7 @@ static int nvme_get_info_from_identify(struct nvme_dev *dev)
 	if (!ctrl)
 		return -ENOMEM;
 
-	ret = nvme_identify(dev, 0, 1, (dma_addr_t)(long)ctrl);
+	ret = nvme_identify(dev, 0, 1, ctrl);
 	if (ret) {
 		free(ctrl);
 		return -EIO;
@@ -718,7 +718,7 @@ static int nvme_blk_probe(struct udevice *udev)
 	ns->dev = ndev;
 	/* extract the namespace id from the block device name */
 	ns->ns_id = trailing_strtol(udev->name);
-	if (nvme_identify(ndev, ns->ns_id, 0, (dma_addr_t)(long)id)) {
+	if (nvme_identify(ndev, ns->ns_id, 0, id)) {
 		free(id);
 		return -EIO;
 	}
@@ -752,7 +752,7 @@ static ulong nvme_blk_rw(struct udevice *udev, lbaint_t blknr,
 	u64 prp2;
 	u64 total_len = blkcnt << desc->log2blksz;
 	u64 temp_len = total_len;
-	uintptr_t temp_buffer = (uintptr_t)buffer;
+	void *temp_buffer = buffer;
 
 	u64 slba = blknr;
 	u16 lbas = 1 << (dev->max_transfer_shift - ns->lba_shift);
@@ -890,7 +890,7 @@ int nvme_init(struct udevice *udev)
 		char name[20];
 
 		memset(id, 0, sizeof(*id));
-		if (nvme_identify(ndev, i, 0, (dma_addr_t)(long)id)) {
+		if (nvme_identify(ndev, i, 0, id)) {
 			ret = -EIO;
 			goto free_id;
 		}
