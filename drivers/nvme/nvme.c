@@ -47,12 +47,12 @@ static int nvme_wait_csts(struct nvme_dev *dev, u32 mask, u32 val)
 static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
 			   int total_len, u64 dma_addr)
 {
-	u32 page_size = dev->page_size;
+	const u32 page_size = dev->page_size;
+	const u32 prps_per_page = (page_size >> 3) - 1;
 	int offset = dma_addr & (page_size - 1);
 	u64 *prp_pool;
 	int length = total_len;
 	int i, nprps;
-	u32 prps_per_page = (page_size >> 3) - 1;
 	u32 num_pages;
 
 	length -= (page_size - offset);
@@ -91,8 +91,8 @@ static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
 	i = 0;
 	while (nprps) {
 		if ((i == (prps_per_page - 1)) && nprps > 1) {
-			*(prp_pool + i) = cpu_to_le64((ulong)prp_pool +
-					page_size);
+			u64 next_prp_list = (u64)prp_pool + page_size;
+			*(prp_pool + i) = cpu_to_le64(next_prp_list);
 			i = 0;
 			prp_pool += page_size;
 		}
