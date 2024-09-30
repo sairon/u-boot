@@ -69,6 +69,12 @@ config RESET_BRCMSTB
 	  This enables the reset controller driver for Broadcom STB SoCs using
 	  a SUN_TOP_CTRL_SW_INIT style controller.
 
+config RESET_BRCMSTB_RESCAL
+	tristate "Broadcom STB RESCAL reset controller"
+	help
+	  This enables the RESCAL reset controller found on BCM2712 and some other
+	  Broadcom STB SoCs (BCM7216).
+
 config RESET_UNIPHIER
 	bool "Reset controller driver for UniPhier SoCs"
 	depends on ARCH_UNIPHIER
