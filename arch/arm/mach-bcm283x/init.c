@@ -18,7 +18,7 @@
 #ifdef CONFIG_ARM64
 #include <asm/armv8/mmu.h>
 
-#define MEM_MAP_MAX_ENTRIES (4)
+#define MEM_MAP_MAX_ENTRIES (5)
 
 static struct mm_region bcm283x_mem_map[MEM_MAP_MAX_ENTRIES] = {
 	{
@@ -83,6 +83,14 @@ static struct mm_region bcm2712_mem_map[MEM_MAP_MAX_ENTRIES] = {
 		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
 			 PTE_BLOCK_NON_SHARE |
 			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		/* PCIe1 memory region */
+		.virt = 0x1B00000000UL,
+		.phys = 0x1B00000000UL,
+		.size = 0x0000400000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			PTE_BLOCK_NON_SHARE |
+			PTE_BLOCK_PXN | PTE_BLOCK_UXN
 	}, {
 		/* SoC bus */
 		.virt = 0x107c000000UL,
