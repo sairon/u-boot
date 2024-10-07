@@ -175,6 +175,7 @@ struct brcm_pcie {
 	enum pcie_soc_base	soc_base;
 	int			gen;
 	bool			ssc;
+	bool			no_probe;
 
 	struct reset_ctl	*rescal;
 	struct reset_ctl	*bridge_reset;
@@ -546,6 +547,11 @@ static int brcm_pcie_probe(struct udevice *dev)
 	u16 nlw, cls, lnksta;
 	u32 tmp;
 
+	if (pcie->no_probe) {
+		printf("PCIe BRCM: skipping probe\n");
+		return 0;
+	}
+
 	if (pcie->rescal)
 		reset_deassert(pcie->rescal);
 
@@ -766,6 +772,7 @@ static int brcm_pcie_of_to_plat(struct udevice *dev)
 	}
 
 	pcie->ssc = ofnode_read_bool(dn, "brcm,enable-ssc");
+	pcie->no_probe = ofnode_read_bool(dn, "u-boot,no-probe");
 
 	ret = ofnode_read_u32(dn, "max-link-speed", &max_link_speed);
 	if (ret < 0 || max_link_speed > 4)
